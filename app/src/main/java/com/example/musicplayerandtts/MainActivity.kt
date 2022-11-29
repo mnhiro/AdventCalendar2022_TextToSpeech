@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -103,9 +105,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
 
         setContent {
-            FeatureThatRequiresExternalPermission()
             Column {
                 TalkToSpeechScreen()
+                FeatureThatRequiresExternalPermission()
                 MusicList(musicList = musicList)
             }
         }
@@ -193,28 +195,20 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     @Composable
     private fun FeatureThatRequiresExternalPermission() {
 
-        // Camera permission state
-        val cameraPermissionState = rememberPermissionState(
-            android.Manifest.permission.READ_EXTERNAL_STORAGE
-        )
-
-        if (cameraPermissionState.status.isGranted) {
-            Text("Camera permission Granted")
+        val externalStoragePermissionState = rememberPermissionState(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (externalStoragePermissionState.status.isGranted) {
+            Text("Read External Storage permission Granted")
         } else {
             Column {
-                val textToShow = if (cameraPermissionState.status.shouldShowRationale) {
-                    // If the user has denied the permission but the rationale can be shown,
-                    // then gently explain why the app requires this permission
-                    "The camera is important for this app. Please grant the permission."
+                val textToShow = if (externalStoragePermissionState.status.shouldShowRationale) {
+                    "The reading external storage is important for this app. Please grant the permission."
                 } else {
-                    // If it's the first time the user lands on this feature, or the user
-                    // doesn't want to be asked again for this permission, explain that the
-                    // permission is required
-                    "Camera permission required for this feature to be available. " +
-                            "Please grant the permission"
+                    "Reading external storage not available"
                 }
+
                 Text(textToShow)
-                Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(onClick = { externalStoragePermissionState.launchPermissionRequest() }) {
                     Text("Request permission")
                 }
             }
