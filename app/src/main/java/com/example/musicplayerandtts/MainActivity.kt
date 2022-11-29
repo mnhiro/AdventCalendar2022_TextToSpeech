@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             override fun onDone(p0: String?) {
             }
 
+            @Deprecated("", ReplaceWith(""))
             override fun onError(p0: String?) {
             }
         })
