@@ -1,32 +1,112 @@
 package com.example.musicplayerandtts
 
+import android.content.ContentUris
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
 import java.util.*
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var textToSpeech: TextToSpeech
 
+    data class Music(
+        val uri: Uri,
+        val displayName: String,
+        val title: String,
+        val artist: String,
+        val duration: Int,
+        val size: Int
+    )
+
+    private val musicList = mutableListOf<Music>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(
+                MediaStore.VOLUME_EXTERNAL
+            )
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.SIZE,
+        )
+
+        val selection = null
+
+        val sortOrder = null
+
+        val resolver = this.contentResolver
+
+        val query = resolver.query(
+            collection,
+            projection,
+            selection,
+            null,
+            sortOrder
+        )
+
+        query?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val displayName = cursor.getString(displayNameColumn)
+                val title = cursor.getString(titleColumn)
+                val artist = cursor.getString(artistColumn)
+                val duration = cursor.getInt(durationColumn)
+                val size = cursor.getInt(sizeColumn)
+
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
+
+                musicList += Music(
+                    contentUri,
+                    displayName,
+                    title,
+                    artist,
+                    duration,
+                    size
+                )
+            }
+        }
+
         setContent {
+            FeatureThatRequiresExternalPermission()
             Column {
-                Button(
-                    onClick = { startSpeak(getString(R.string.this_is_test), true) }
-                ) {
-                    Text(text = getString(R.string.start_voice))
-                }
-                Button(onClick = { /*TODO*/ }) {
-                    Text(text = getString(R.string.transition_to_music_player))
-                }
+                TalkToSpeechScreen()
+                MusicList(musicList = musicList)
             }
         }
 
@@ -73,11 +153,71 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onDestroy()
     }
 
-    private fun startSpeak(text: String, isImmediately: Boolean) {
-        if (isImmediately) {
-            textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "uniqueId")
+    private fun startSpeak(text: String) {
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "uniqueId")
+    }
+
+    @Composable
+    fun TalkToSpeechScreen() {
+        Column {
+            Button(
+                onClick = { startSpeak(getString(R.string.this_is_test)) }
+            ) {
+                Text(text = getString(R.string.start_voice))
+            }
+            Button(onClick = { /*TODO*/ }) {
+                Text(text = getString(R.string.transition_to_music_player))
+            }
+        }
+    }
+
+    @Composable
+    fun MusicList(musicList: List<Music>) {
+        LazyColumn{
+            items(musicList.size) { index ->
+                MusicRow(musicList[index])
+            }
+        }
+    }
+
+    @Composable
+    fun MusicRow(music: Music) {
+        Column {
+            Text(text = music.displayName)
+            Text(text = music.artist)
+            Text(text = music.duration.toString())
+        }
+    }
+
+    @OptIn(ExperimentalPermissionsApi::class)
+    @Composable
+    private fun FeatureThatRequiresExternalPermission() {
+
+        // Camera permission state
+        val cameraPermissionState = rememberPermissionState(
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        )
+
+        if (cameraPermissionState.status.isGranted) {
+            Text("Camera permission Granted")
         } else {
-            textToSpeech.speak(text, TextToSpeech.QUEUE_ADD, null, "uniqueId")
+            Column {
+                val textToShow = if (cameraPermissionState.status.shouldShowRationale) {
+                    // If the user has denied the permission but the rationale can be shown,
+                    // then gently explain why the app requires this permission
+                    "The camera is important for this app. Please grant the permission."
+                } else {
+                    // If it's the first time the user lands on this feature, or the user
+                    // doesn't want to be asked again for this permission, explain that the
+                    // permission is required
+                    "Camera permission required for this feature to be available. " +
+                            "Please grant the permission"
+                }
+                Text(textToShow)
+                Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
+                    Text("Request permission")
+                }
+            }
         }
     }
 }
