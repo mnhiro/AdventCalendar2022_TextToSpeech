@@ -1,10 +1,8 @@
 package com.example.musicplayerandtts
 
-import android.content.ContentUris
-import android.net.Uri
-import android.os.Build
+import android.media.MediaMetadataRetriever
 import android.os.Bundle
-import android.provider.MediaStore
+import android.os.Environment
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
@@ -21,88 +19,23 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import java.io.File
 import java.util.*
+
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var textToSpeech: TextToSpeech
 
     data class Music(
-        val uri: Uri,
-        val displayName: String,
         val title: String,
-        val artist: String,
-        val duration: Int,
-        val size: Int
+        val artist: String
     )
-
-    private val musicList = mutableListOf<Music>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Audio.Media.getContentUri(
-                MediaStore.VOLUME_EXTERNAL
-            )
-        } else {
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        }
-
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.DISPLAY_NAME,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.SIZE,
-        )
-
-        val selection = null
-
-        val sortOrder = null
-
-        val resolver = this.contentResolver
-
-        val query = resolver.query(
-            collection,
-            projection,
-            selection,
-            null,
-            sortOrder
-        )
-
-        query?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
-            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
-
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val displayName = cursor.getString(displayNameColumn)
-                val title = cursor.getString(titleColumn)
-                val artist = cursor.getString(artistColumn)
-                val duration = cursor.getInt(durationColumn)
-                val size = cursor.getInt(sizeColumn)
-
-                val contentUri = ContentUris.withAppendedId(
-                    MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-
-                musicList += Music(
-                    contentUri,
-                    displayName,
-                    title,
-                    artist,
-                    duration,
-                    size
-                )
-            }
-        }
+        val musicList = getMediaMetadataInfo()
 
         setContent {
             Column {
@@ -159,6 +92,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "uniqueId")
     }
 
+    private fun getMediaMetadataInfo(): MutableList<Music> {
+        val arMediaPath: MutableList<String> = ArrayList()
+        val musicList = mutableListOf<Music>()
+
+        val fileDir: File =
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+
+        val strPath: String = fileDir.path
+        val filePaths: Array<File> = File(strPath).listFiles()
+        for (file in filePaths) {
+            if (file.isFile) {
+                // ファイルパスを保存
+                arMediaPath.add(strPath + "/" + file.name)
+            }
+        }
+
+        // メタ情報を取得するためのクラス
+        val mmr = MediaMetadataRetriever()
+
+        for (i in arMediaPath.indices) {
+            // ファイルパスをセット
+            mmr.setDataSource(arMediaPath[i])
+
+            // メタ情報を取得
+            val title = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
+            val artist = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+
+            musicList += Music(
+                title = title,
+                artist = artist
+            )
+        }
+
+        return musicList
+    }
+
     @Composable
     fun TalkToSpeechScreen() {
         Column {
@@ -175,7 +144,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     @Composable
     fun MusicList(musicList: List<Music>) {
-        LazyColumn{
+        LazyColumn {
             items(musicList.size) { index ->
                 MusicRow(musicList[index])
             }
@@ -184,18 +153,27 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     @Composable
     fun MusicRow(music: Music) {
-        Column {
-            Text(text = music.displayName)
-            Text(text = music.artist)
-            Text(text = music.duration.toString())
+        Row {
+            Button(onClick = { startSpeak(generateReadingText(music)) } ) {
+                Text(text = getString(R.string.text_read_music))
+            }
+            Column {
+                Text(text = music.title)
+                Text(text = music.artist)
+            }
         }
+    }
+
+    private fun generateReadingText(music: Music): String {
+        return music.artist + "さんで" + music.title + "です"
     }
 
     @OptIn(ExperimentalPermissionsApi::class)
     @Composable
     private fun FeatureThatRequiresExternalPermission() {
 
-        val externalStoragePermissionState = rememberPermissionState(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        val externalStoragePermissionState =
+            rememberPermissionState(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         if (externalStoragePermissionState.status.isGranted) {
             Text("Read External Storage permission Granted")
         } else {

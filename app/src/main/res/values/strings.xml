@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">MusicPlayerAndTTS</string>
-    <string name="not_available_japanese">日本語読上げできません</string>
+    <string name="not_available_japanese">日本語読み上げできません</string>
     <string name="error_init_tts">初期化に失敗しました</string>
     <string name="this_is_test">これはテストです。</string>
     <string name="start_voice">ここを押したら音声再生</string>
     <string name="transition_to_music_player">楽曲再生画面に移動</string>
+    <string name="text_read_music">読み上げ</string>
 </resources>
