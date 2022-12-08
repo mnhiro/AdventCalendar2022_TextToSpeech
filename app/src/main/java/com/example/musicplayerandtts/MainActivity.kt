@@ -4,7 +4,6 @@ import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.os.Environment
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,12 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.shouldShowRationale
 import java.io.File
 import java.util.*
 
@@ -39,25 +32,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         setContent {
             Column {
-                TalkToSpeechScreen()
-                FeatureThatRequiresExternalPermission()
                 MusicList(musicList = musicList)
             }
         }
 
         textToSpeech = TextToSpeech(this, this)
-
-        textToSpeech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(p0: String?) {
-            }
-
-            override fun onDone(p0: String?) {
-            }
-
-            @Deprecated("", ReplaceWith(""))
-            override fun onError(p0: String?) {
-            }
-        })
     }
 
     override fun onInit(status: Int) {
@@ -89,7 +68,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun startSpeak(text: String) {
-        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "uniqueId")
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "musicRead")
     }
 
     private fun getMediaMetadataInfo(): MutableList<Music> {
@@ -129,20 +108,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     @Composable
-    fun TalkToSpeechScreen() {
-        Column {
-            Button(
-                onClick = { startSpeak(getString(R.string.this_is_test)) }
-            ) {
-                Text(text = getString(R.string.start_voice))
-            }
-            Button(onClick = { /*TODO*/ }) {
-                Text(text = getString(R.string.transition_to_music_player))
-            }
-        }
-    }
-
-    @Composable
     fun MusicList(musicList: List<Music>) {
         LazyColumn {
             items(musicList.size) { index ->
@@ -166,30 +131,5 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun generateReadingText(music: Music): String {
         return music.artist + "さんで" + music.title + "です"
-    }
-
-    @OptIn(ExperimentalPermissionsApi::class)
-    @Composable
-    private fun FeatureThatRequiresExternalPermission() {
-
-        val externalStoragePermissionState =
-            rememberPermissionState(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-        if (externalStoragePermissionState.status.isGranted) {
-            Text("Read External Storage permission Granted")
-        } else {
-            Column {
-                val textToShow = if (externalStoragePermissionState.status.shouldShowRationale) {
-                    "The reading external storage is important for this app. Please grant the permission."
-                } else {
-                    "Reading external storage not available"
-                }
-
-                Text(textToShow)
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(onClick = { externalStoragePermissionState.launchPermissionRequest() }) {
-                    Text("Request permission")
-                }
-            }
-        }
     }
 }
