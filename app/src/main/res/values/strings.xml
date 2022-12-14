@@ -6,4 +6,6 @@
     <string name="start_voice">ここを押したら音声再生</string>
     <string name="transition_to_music_player">楽曲再生画面に移動</string>
     <string name="text_read_music">読み上げ</string>
+    <string name="text_start_player">楽曲再生ボタン</string>
+    <string name="error_create_file">ファイル作成に失敗</string>
 </resources>

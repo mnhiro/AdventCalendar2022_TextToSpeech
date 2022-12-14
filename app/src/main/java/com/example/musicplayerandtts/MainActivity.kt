@@ -1,6 +1,7 @@
 package com.example.musicplayerandtts
 
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.speech.tts.TextToSpeech
@@ -9,9 +10,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.MediaItem
 import java.io.File
 import java.util.*
 
@@ -19,24 +30,39 @@ import java.util.*
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private lateinit var textToSpeech: TextToSpeech
+    private lateinit var player: ExoPlayer
 
     data class Music(
         val title: String,
-        val artist: String
+        val artist: String,
+        val contentUri: Uri
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        textToSpeech = TextToSpeech(this, this)
+        player = ExoPlayer.Builder(this).build()
+
         val musicList = getMediaMetadataInfo()
+        val playlist = musicList.map { music ->
+            music.contentUri
+        }
+
+        playlist.map { uri ->
+            player.addMediaItem(MediaItem.fromUri(uri))
+        }
+        
+        player.prepare()
 
         setContent {
             Column {
                 MusicList(musicList = musicList)
+                TextToSpeechMusicPlayer()
             }
         }
 
-        textToSpeech = TextToSpeech(this, this)
+
     }
 
     override fun onInit(status: Int) {
@@ -79,11 +105,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
 
         val strPath: String = fileDir.path
-        val filePaths: Array<File> = File(strPath).listFiles()
-        for (file in filePaths) {
-            if (file.isFile) {
-                // ファイルパスを保存
-                arMediaPath.add(strPath + "/" + file.name)
+        val filePaths = File(strPath).listFiles()
+
+        if (filePaths != null) {
+            for (file in filePaths) {
+                if (file.isFile) {
+                    // ファイルパスを保存
+                    arMediaPath.add(strPath + "/" + file.name)
+                }
             }
         }
 
@@ -100,7 +129,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             musicList += Music(
                 title = title,
-                artist = artist
+                artist = artist,
+                contentUri = arMediaPath[i].toUri()
             )
         }
 
@@ -109,7 +139,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     @Composable
     fun MusicList(musicList: List<Music>) {
-        LazyColumn {
+        LazyColumn(
+            modifier = Modifier
+                .width(400.dp)
+                .height(400.dp)
+        ) {
             items(musicList.size) { index ->
                 MusicRow(musicList[index])
             }
@@ -125,6 +159,24 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             Column {
                 Text(text = music.title)
                 Text(text = music.artist)
+            }
+        }
+    }
+    
+    @Composable
+    fun TextToSpeechMusicPlayer() {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            IconButton(
+                onClick = { player.play() }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = getString(R.string.text_start_player)
+                )
             }
         }
     }
