@@ -1,13 +1,16 @@
 package com.example.musicplayerandtts
 
+import android.app.usage.UsageEvents
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -21,39 +24,78 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.viewModelScope
 import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.Player
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.*
 
-
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
+    private var musicList = mutableListOf<Music>()
+
+    // ここは出来ればシングルトンに出来ると良い
     private lateinit var textToSpeech: TextToSpeech
     private lateinit var player: ExoPlayer
 
-    data class Music(
-        val title: String,
-        val artist: String,
-        val contentUri: Uri
-    )
+    // 発話リスナーの中で直接PlayerにアクセスできないのでViewModelを介して操作
+    private val viewModel by viewModels<MainViewModel>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        musicList.addAll(getMediaMetadataInfo())
+
+        // 次に再生される楽曲の情報を読み上げてPlayerを動かす
+        viewModel.doneSpeak.observe(this) { index ->
+            player.addMediaItem(
+                MediaItem.fromUri(
+                    musicList[index].contentUri
+                )
+            )
+            player.prepare()
+            player.play()
+        }
+
+        // 現在の曲が何かを指定する変数 -> ViewModelに移したほうが良さそう
+        var count = 0
         textToSpeech = TextToSpeech(this, this)
+        textToSpeech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            // 今回は省略
+            override fun onStart(p0: String?) {
+            }
+
+            // 発話が完了したタイミングでViewModelに発話が完了したことを伝える
+            override fun onDone(p0: String?) {
+                viewModel.viewModelScope.launch {
+                    viewModel.doneSpeak(count)
+                    // 次の曲に切り替える
+                    count++
+                }
+            }
+
+            // 今回は省略
+            override fun onError(p0: String?) {
+            }
+        })
+
         player = ExoPlayer.Builder(this).build()
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                super.onMediaItemTransition(mediaItem, reason)
 
-        val musicList = getMediaMetadataInfo()
-        val playlist = musicList.map { music ->
-            music.contentUri
-        }
+                // 楽曲が切り替わるタイミングで再生を停止
+                player.stop()
 
-        playlist.map { uri ->
-            player.addMediaItem(MediaItem.fromUri(uri))
-        }
-        
-        player.prepare()
+                // 1曲目以降で読み上げをするように調整
+                if (count >= 1) {
+                    // 次の曲を読み上げ
+                    startSpeak(generateReadingText(musicList[count]))
+                }
+            }
+        })
 
         setContent {
             Column {
@@ -61,8 +103,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 TextToSpeechMusicPlayer()
             }
         }
-
-
     }
 
     override fun onInit(status: Int) {
@@ -94,6 +134,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun startSpeak(text: String) {
+        println(text)
         textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "musicRead")
     }
 
@@ -171,7 +212,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             IconButton(
-                onClick = { player.play() }
+                onClick = { startSpeak(generateReadingText(musicList[0])) }
             ) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
