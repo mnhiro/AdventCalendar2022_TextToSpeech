@@ -1,8 +1,6 @@
 package com.example.musicplayerandtts
 
-import android.app.usage.UsageEvents
 import android.media.MediaMetadataRetriever
-import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.speech.tts.TextToSpeech
@@ -32,6 +30,9 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.*
 
+private const val MUSIC_PLAYER_AND_TEXT_TO_SPEECH = "MusicPlayerAndTextToSpeech"
+private const val READ_MUSIC_INFO = "ReadMusicInfo"
+
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private var musicList = mutableListOf<Music>()
@@ -48,19 +49,22 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         musicList.addAll(getMediaMetadataInfo())
 
-        // 次に再生される楽曲の情報を読み上げてPlayerを動かす
-        viewModel.doneSpeak.observe(this) { index ->
-            player.addMediaItem(
-                MediaItem.fromUri(
-                    musicList[index].contentUri
-                )
-            )
-            player.prepare()
-            player.play()
-        }
-
         // 現在の曲が何かを指定する変数 -> ViewModelに移したほうが良さそう
         var count = 0
+
+        // 次に再生される楽曲の情報を読み上げてPlayerを動かす
+        viewModel.doneSpeak.observe(this) { index ->
+            if (index < musicList.size) {
+                player.addMediaItem(
+                    MediaItem.fromUri(
+                        musicList[index].contentUri
+                    )
+                )
+                player.prepare()
+                player.play()
+            }
+        }
+
         textToSpeech = TextToSpeech(this, this)
         textToSpeech.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             // 今回は省略
@@ -70,9 +74,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             // 発話が完了したタイミングでViewModelに発話が完了したことを伝える
             override fun onDone(p0: String?) {
                 viewModel.viewModelScope.launch {
-                    viewModel.doneSpeak(count)
-                    // 次の曲に切り替える
-                    count++
+                    if (p0.equals(MUSIC_PLAYER_AND_TEXT_TO_SPEECH)) {
+                        viewModel.doneSpeak(count)
+                    }
                 }
             }
 
@@ -83,16 +87,28 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
         player = ExoPlayer.Builder(this).build()
         player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                super.onMediaItemTransition(mediaItem, reason)
+            override fun onEvents(player: Player, events: Player.Events) {
+                // 楽曲が終わったタイミングで処理を入れる
+                if (player.playbackState == Player.STATE_ENDED){
+                    // 次の曲に切り替える
+                    count++
 
-                // 楽曲が切り替わるタイミングで再生を停止
-                player.stop()
+                    // 楽曲が切り替わるタイミングで再生を停止
+                    player.stop()
 
-                // 1曲目以降で読み上げをするように調整
-                if (count >= 1) {
-                    // 次の曲を読み上げ
-                    startSpeak(generateReadingText(musicList[count]))
+                    // リストの終わりを検知する
+                    if (count < musicList.size) {
+                        // 次の曲を読み上げ
+                        startSpeak(
+                            generateReadingText(musicList[count]),
+                            MUSIC_PLAYER_AND_TEXT_TO_SPEECH
+                        )
+                    }
+
+                    // 楽曲リストの最後まで読み上げたら、最初の曲を指すように変更する
+                    if (count == musicList.size) {
+                        count = 0
+                    }
                 }
             }
         })
@@ -107,17 +123,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            textToSpeech.let { tts ->
-                val locale = Locale.JAPAN
-                if (tts.isLanguageAvailable(locale) > TextToSpeech.LANG_AVAILABLE) {
-                    tts.language = Locale.JAPAN
-                } else {
-                    Toast.makeText(
-                        this,
-                        getString(R.string.not_available_japanese),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+            val locale = Locale.JAPAN
+            if (textToSpeech.isLanguageAvailable(locale) > TextToSpeech.LANG_AVAILABLE) {
+                textToSpeech.language = Locale.JAPAN
+            } else {
+                Toast.makeText(
+                    this,
+                    getString(R.string.not_available_japanese),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         } else {
             Toast.makeText(
@@ -130,12 +144,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         textToSpeech.shutdown()
+        player.release()
         super.onDestroy()
     }
 
-    private fun startSpeak(text: String) {
+    private fun startSpeak(text: String, id: String) {
         println(text)
-        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "musicRead")
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
     }
 
     private fun getMediaMetadataInfo(): MutableList<Music> {
@@ -194,12 +209,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     @Composable
     fun MusicRow(music: Music) {
         Row {
-            Button(onClick = { startSpeak(generateReadingText(music)) } ) {
+            Button(onClick = { startSpeak(generateReadingText(music), READ_MUSIC_INFO) } ) {
                 Text(text = getString(R.string.text_read_music))
             }
             Column {
-                Text(text = music.title)
-                Text(text = music.artist)
+                Text(text = "sample曲名")
+                Text(text = "sampleアーティスト")
+//                Text(text = music.title)
+//                Text(text = music.artist)
             }
         }
     }
@@ -212,7 +229,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             IconButton(
-                onClick = { startSpeak(generateReadingText(musicList[0])) }
+                onClick = {
+                    startSpeak(
+                        generateReadingText(musicList[0]),
+                        MUSIC_PLAYER_AND_TEXT_TO_SPEECH
+                    )
+                }
             ) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
@@ -223,6 +245,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun generateReadingText(music: Music): String {
-        return music.artist + "さんで" + music.title + "です"
+        return "sampleアーティストさんで、sample曲名です"
+//        return music.artist + "さんで、" + music.title + "です"
     }
 }
